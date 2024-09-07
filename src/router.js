@@ -2,6 +2,7 @@ import { createId as createCuid } from '@paralleldrive/cuid2';
 import { Hono } from 'hono';
 // eslint-disable-next-line
 import { cors } from 'hono/cors';
+import { html } from 'hono/html';
 import { isUndefined } from 'lodash';
 import yaml from 'yaml';
 import { z } from 'zod';
@@ -77,11 +78,14 @@ app.post('/api/handle/form', async c => {
   const allowedOptions = staticmanCommentsConfig?.allowedOptions || [];
   const requiredOptions = staticmanCommentsConfig?.requiredOptions || [];
   const moderation = staticmanCommentsConfig?.moderation === 'true' || true;
-  const fieldTransforms = staticmanCommentsConfig?.transforms || staticmanCommentsConfig?.fieldTransforms || {};
+  const fieldTransforms =
+    staticmanCommentsConfig?.transforms || staticmanCommentsConfig?.fieldTransforms || {};
   const optionTransforms = staticmanCommentsConfig?.optionTransforms || {};
 
   // Build input fields schema
-  const fieldInputSchema = z.object(buildSchemaObject(allowedFields, requiredFields, fieldTransforms)).strict();
+  const fieldInputSchema = z
+    .object(buildSchemaObject(allowedFields, requiredFields, fieldTransforms))
+    .strict();
 
   // Validate the input fields and escape
   const {
@@ -95,10 +99,15 @@ app.post('/api/handle/form', async c => {
   }
 
   // Build input options schema
-  const optionInputSchema = z.object(buildSchemaObject(allowedOptions, requiredOptions, optionTransforms)).strict();
+  const optionInputSchema = z
+    .object(buildSchemaObject(allowedOptions, requiredOptions, optionTransforms))
+    .strict();
 
   // Validate the input options and escape
-  const { validatedSchema: validatedOptions } = await Validator.check(optionInputSchema, optionValues);
+  const { validatedSchema: validatedOptions } = await Validator.check(
+    optionInputSchema,
+    optionValues
+  );
 
   // Generate unique placeholder properties
   const commentId = createCuid();
@@ -122,10 +131,19 @@ app.post('/api/handle/form', async c => {
     : '';
   const directoryPath = Object.prototype.hasOwnProperty.call(staticmanCommentsConfig, 'path')
     ? handlePlaceholders(staticmanCommentsConfig.path, fields, validatedOptions)
-    : `_data/results/${new Date(fields.date).valueOf()}`;
+    : `src/content/comments/${new Date(fields.date).valueOf()}`;
+
+  let message = '';
+  if (fields.message) {
+    message = fields.message;
+    delete fields.message;
+  }
 
   const yamlData = yaml.stringify(fields);
-  const base64YamlData = Base64.encode(yamlData);
+  const markdown = `---
+${yamlData}5
+---\n${message}`;
+  const base64YamlData = Base64.encode(markdown);
 
   const defaultBranch = staticmanCommentsConfig?.branch || 'master';
   const branch = `commentworker_${commentId}`;
@@ -134,7 +152,7 @@ app.post('/api/handle/form', async c => {
     const createBranchResponse = await gh.createBranchOnRepository(branch, defaultBranch);
   }
 
-  const filePath = `${directoryPath}/${filename}.yml`;
+  const filePath = `${directoryPath}/${filename}.md`;
   const createCommentFileResponse = await gh.createFileOnRepository(
     filePath,
     commitMessage,
@@ -152,7 +170,7 @@ app.post('/api/handle/form', async c => {
       'pullRequestBody'
     )
       ? handlePlaceholders(staticmanCommentsConfig.pullRequestBody, fields, validatedOptions)
-      : `Dear human,\r\n\r\nHere\'s a new entry for your approval. :tada:\r\n\r\nMerge the pull request to accept it, or close it to send it away.\r\n\r\n:heart: Your friend [comment-worker](https://github.com/zanechua/comment-worker) :muscle:\r\n\r\n---\r\n\r\n${objectToMarkdownTable(
+      : `Dear human,\r\n\r\nHere\'s a new entry for your approval. :tada:\r\n\r\nMerge the pull request to accept it, or close it to send it away.\r\n\r\n:heart: Your friend [comment-worker](https://github.com/OverflowCat/comment-worker) :muscle:\r\n\r\n---\r\n\r\n${objectToMarkdownTable(
           fields
         )}`;
     const pullRequest = await gh.createPullRequestOnRepository(
@@ -161,8 +179,21 @@ app.post('/api/handle/form', async c => {
       branch,
       defaultBranch
     );
-  }
 
+    if (pullRequest.url) {
+      const { url } = pullRequest.url;
+      const redirectHTML = html` <html>
+        <head>
+          <meta http-equiv="refresh" content="0;url=${url}" />
+        </head>
+        <body>
+          <p>Created. Redirecting to <a href="${url}">${url}</a></p>
+        </body>
+      </html>`;
+      return c.html(redirectHTML);
+    }
+    return c.text('Failed to create pull request', 500);
+  }
   return c.text('Created', 201);
 });
 
