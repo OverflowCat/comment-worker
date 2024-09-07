@@ -77,6 +77,13 @@ app.post('/api/handle/form', async c => {
   const requiredFields = staticmanCommentsConfig?.requiredFields || [];
   const allowedOptions = staticmanCommentsConfig?.allowedOptions || [];
   const requiredOptions = staticmanCommentsConfig?.requiredOptions || [];
+  console.log({
+    allowedFields,
+    requiredFields,
+    allowedOptions,
+    requiredOptions
+  });
+
   const moderation = staticmanCommentsConfig?.moderation === 'true' || true;
   const fieldTransforms =
     staticmanCommentsConfig?.transforms || staticmanCommentsConfig?.fieldTransforms || {};
